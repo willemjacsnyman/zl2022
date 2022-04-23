@@ -42,23 +42,129 @@ defmodule ZLTest do
   end
 
   test "diff/3" do
-    assert diff("a", nil, nil) == {"a", nil, nil, %{}}
-    assert diff("a", 1, nil) == {"a", 1, nil, %{"a" => [1, nil]}}
-    assert diff("a", [1], [2]) == {"a", [1], [2], %{"a/0" => [1, 2]}}
+    assert diff("a", nil, nil) == {"a", nil, %{}}
+    assert diff("a", 1, nil) == {"a", 1, %{"a" => [1, nil]}}
+    assert diff("a", [1], [2]) == {"a", [1], %{"a/0" => [1, 2]}}
 
     assert diff("a", %{"b" => "c1"}, %{"b" => "c2"}) ==
-             {"a", %{"b" => "c1"}, %{"b" => "c2"}, %{"a/b" => ["c1", "c2"]}}
+             {"a", %{"b" => "c1"}, %{"a/b" => ["c1", "c2"]}}
 
-             assert diff("a", %{"b" => ["c1"]}, %{"b" => ["c1", "c2"]}) ==
-              {"a", %{"b" => ["c1"]}, %{"b" => ["c1", "c2"]}, %{"a/b" => [["a/b/0"], ["a/b/0", "a/b/1"]], "a/b/1" => [nil, "c2"]}}
+    assert diff("a", %{"b" => ["c1"]}, %{"b" => ["c1", "c2"]}) ==
+             {"a", %{"b" => ["c1"]},
+              %{"a/b" => [["a/b/0"], ["a/b/0", "a/b/1"]], "a/b/1" => [nil, "c2"]}}
+  end
 
+  test "change/3" do
+    # assert test_change3("a", nil, 1) == 1
+    # assert test_change3("a", 1, 2) == 2
+    # assert test_change3("a", 2, nil) == nil
+    # assert test_change3("nil_to_empty", nil, []) == []
+    # assert test_change3("arr in arr", [], [[]]) == [[]]
+    # assert test_change3("multi arr in arr", [], [[], []]) == [[], []]
+    # assert test_change3("arr in arr in arr", [[]], [[[]]]) == [[[]]]
+    # assert test_change3("arrs in arr to arr", [[], []], []) == []
+
+    # assert test_change3("nil_to_empty_map", nil, %{}) == %{}
+
+    # assert test_change3("empty_map_to_somekv", %{}, %{"somek" => "somev"}) == %{
+    #          "somek" => "somev"
+    #        }
+
+    # assert test_change3("somekv_to_empty", %{"somek" => "somev"}, %{}) == %{}
+
+    # assert test_change3("somekv_from_v_to_nil", %{"somek" => "somev"}, %{"somek" => nil}) == %{
+    #          "somek" => nil
+    #        }
+
+    assert test_change3("somekv_from_v_to_nil", %{"somek" => "somev"}, %{"somek" => "somev2"}) ==
+             %{
+               "somek" => "somev2"
+             }
+
+    # assert test_change3("somekv_from_nil_to_v", %{"somek" => nil}, %{"somek" => "v"}) == %{
+    #          "somek" => "v"
+    #        }
+
+    # assert test_change3("map_in_map", %{"m" => nil}, %{"m" => %{"m" => "v"}}) == %{
+    #          "m" => %{"m" => "v"}
+    #        }
+
+    # assert test_change3("map_in_list", [%{"m" => %{}}], [%{"m" => %{"v" => [[[]]]}}]) ==
+    #          [%{"m" => %{"v" => [[[]]]}}]
+  end
+
+  defp test_change3(stream, old, new) do
+    {stream, old, changes} = diff(stream, old, new)
+    change(stream, old, changes)
+  end
+
+  def change(stream, record, changes) do
+    IO.inspect("")
+
+    deflated_stream_record =
+      deflate(stream, record)
+      |> IO.inspect(label: :deflated_stream_record)
+
+    changes
+    |> IO.inspect(label: :changes)
+
+    deflated_and_merged =
+      deflated_stream_record
+      |> Map.merge(changes)
+      |> IO.inspect(label: :deflated_and_merged)
+
+    {_, deflated_merged} =
+      deflated_and_merged
+      |> Enum.map_reduce(%{}, fn {k, v}, acc ->
+        {{k, v}, Map.put_new(acc, k, map_reduce_merge(v))}
+      end)
+
+    {^stream, inflated} =
+      deflated_merged
+      |> inflate()
+
+    inflated
+  end
+
+  # defp type_of_change(nil, v) when not is_nil(v) do
+  #   :+
+  # end
+
+  # defp type_of_change(r, nil) when not is_nil(r) do
+  #   :-
+  # end
+
+  # defp type_of_change(r, v) when r != v do
+  #   type_of_r = type_of_arg(r)
+  #   type_of_v = type_of_arg(v)
+  #   type_changed = type_of_r != type_of_v
+  #   {:=, type_of_r, type_of_v}
+  # end
+
+  # defp type_of_arg(r) do
+  #   (is_list(r) and :list) ||
+  #     (is_map(r) and :map) ||
+  #     (is_boolean(r) and :boolean) ||
+  #     (is_binary(r) and :binary) ||
+  #     (is_integer(r) and :integer) ||
+  #     (is_float(r) and :float) ||
+  #     (is_number(r) and :number) ||
+  #     :unknown
+  # end
+
+  defp map_reduce_merge([_, new]) do
+    new
+  end
+
+  defp map_reduce_merge(current) do
+    current
   end
 
   def diff(stream, a, b) do
     deflateda = deflate(stream, a)
     deflatedb = deflate(stream, b)
 
-    {_, _, changes} =
+    {_, _, diff} =
       diff(
         stream,
         deflateda,
@@ -66,7 +172,7 @@ defmodule ZLTest do
         deflateda["#"] == stream and deflatedb["#"] == stream
       )
 
-    {stream, a, b, changes}
+    {stream, a, diff}
   end
 
   defp diff(_, _, _, false) do
@@ -79,8 +185,8 @@ defmodule ZLTest do
 
     {_, changesb} =
       changesb
-    # swap b's changes around, this will yield the '+' data.
-    |> Enum.map(fn m ->
+      # swap b's changes around, this will yield the '+' data.
+      |> Enum.map(fn m ->
         k = Map.keys(m) |> List.first()
         [o, v] = m[k]
         Map.put(m, k, [v, o])
