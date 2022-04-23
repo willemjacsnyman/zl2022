@@ -41,51 +41,46 @@ defmodule ZLTest do
              |> inflate()
   end
 
-  test "merge" do
-    assert merge("a", nil, nil) == {"a", nil, nil, %{}}
-    assert merge("a", 1, nil) == {"a", 1, nil, %{"a" => [1, nil]}}
-    assert merge("a", [1], [2]) == {"a", [1], [2], %{"a/0" => [1, 2]}}
+  test "diff/3" do
+    assert diff("a", nil, nil) == {"a", nil, nil, %{}}
+    assert diff("a", 1, nil) == {"a", 1, nil, %{"a" => [1, nil]}}
+    assert diff("a", [1], [2]) == {"a", [1], [2], %{"a/0" => [1, 2]}}
 
-    assert merge("a", %{"b" => "c1"}, %{"b" => "c2"}) ==
+    assert diff("a", %{"b" => "c1"}, %{"b" => "c2"}) ==
              {"a", %{"b" => "c1"}, %{"b" => "c2"}, %{"a/b" => ["c1", "c2"]}}
 
-             assert merge("a", %{"b" => ["c1"]}, %{"b" => ["c1", "c2"]}) ==
+             assert diff("a", %{"b" => ["c1"]}, %{"b" => ["c1", "c2"]}) ==
               {"a", %{"b" => ["c1"]}, %{"b" => ["c1", "c2"]}, %{"a/b" => [["a/b/0"], ["a/b/0", "a/b/1"]], "a/b/1" => [nil, "c2"]}}
 
   end
 
-  def merge(stream, dataa, datab) do
-    a = deflate(stream, dataa)
-    b = deflate(stream, datab)
+  def diff(stream, a, b) do
+    deflateda = deflate(stream, a)
+    deflatedb = deflate(stream, b)
 
     {_, _, changes} =
-      merge(
+      diff(
         stream,
-        a,
-        b,
-        a["#"] == stream and b["#"] == stream
+        deflateda,
+        deflatedb,
+        deflateda["#"] == stream and deflatedb["#"] == stream
       )
 
-    {stream, dataa, datab, changes}
+    {stream, a, b, changes}
   end
 
-  defp merge(_, _, _, false) do
+  defp diff(_, _, _, false) do
     {:error, :invalid_stream}
   end
 
-  defp merge(_, a, b, true) do
-    diff(a, b)
-  end
+  defp diff(_, a, b, true) do
+    changesa = changes(a, b)
+    changesb = changes(b, a)
 
-  # "a", %{"b" => "c1"}, %{"b" => "c2"}
-  defp diff(a, b) do
-    # [%{"a/b" => ["c1", "c2"]}]
-    changesa = diff(a, b, [])
-
-    # {[%{"a/b" => ["c1", "c2"]}], %{"a/b" => ["c1", "c2"]}}
     {_, changesb} =
-      diff(b, a, [])
-      |> Enum.map(fn m ->
+      changesb
+    # swap b's changes around, this will yield the '+' data.
+    |> Enum.map(fn m ->
         k = Map.keys(m) |> List.first()
         [o, v] = m[k]
         Map.put(m, k, [v, o])
@@ -107,23 +102,23 @@ defmodule ZLTest do
     {inflate(a), inflate(b), changes}
   end
 
-  defp diff(a, b, changes) do
+  defp changes(a, b) do
     {_, acc} =
       Map.delete(a, "#")
       |> Map.to_list()
-      |> Enum.map_reduce(changes, fn {k, v}, acc ->
-        acc = diff(k, [a[k], b[k]], a[k] != b[k], acc)
+      |> Enum.map_reduce([], fn {k, v}, acc ->
+        acc = changes(k, [a[k], b[k]], a[k] != b[k], acc)
         {{k, v}, acc}
       end)
 
     acc
   end
 
-  defp diff(k, v, true, acc) do
+  defp changes(k, v, true, acc) do
     [%{k => v} | acc]
   end
 
-  defp diff(_, _, false, acc) do
+  defp changes(_, _, false, acc) do
     acc
   end
 
