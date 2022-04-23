@@ -55,42 +55,81 @@ defmodule ZLTest do
   end
 
   test "change/3" do
-    # assert test_change3("a", nil, 1) == 1
-    # assert test_change3("a", 1, 2) == 2
-    # assert test_change3("a", 2, nil) == nil
-    # assert test_change3("nil_to_empty", nil, []) == []
-    # assert test_change3("arr in arr", [], [[]]) == [[]]
-    # assert test_change3("multi arr in arr", [], [[], []]) == [[], []]
-    # assert test_change3("arr in arr in arr", [[]], [[[]]]) == [[[]]]
-    # assert test_change3("arrs in arr to arr", [[], []], []) == []
+    assert test_change3("nil_to_1", nil, 1) == 1
+    assert test_change3("1_to_2", 1, 2) == 2
+    assert test_change3("2_to_nil", 2, nil) == nil
+    assert test_change3("nil_to_empty", nil, []) == []
+    assert test_change3("arr in arr", [], [[]]) == [[]]
+    assert test_change3("multi arr in arr", [], [[], []]) == [[], []]
+    assert test_change3("arr in arr in arr", [[]], [[[]]]) == [[[]]]
+    assert test_change3("arrs in arr to arr", [[], []], []) == []
 
-    # assert test_change3("nil_to_empty_map", nil, %{}) == %{}
+    assert test_change3("nil_to_empty_map", nil, %{}) == %{}
 
-    # assert test_change3("empty_map_to_somekv", %{}, %{"somek" => "somev"}) == %{
-    #          "somek" => "somev"
-    #        }
+    assert test_change3("empty_map_to_somekv", %{}, %{"somek" => "somev"}) == %{
+             "somek" => "somev"
+           }
 
-    # assert test_change3("somekv_to_empty", %{"somek" => "somev"}, %{}) == %{}
+    assert test_change3("somekv_to_empty", %{"somek" => "somev"}, %{}) == %{}
 
-    # assert test_change3("somekv_from_v_to_nil", %{"somek" => "somev"}, %{"somek" => nil}) == %{
-    #          "somek" => nil
-    #        }
+    assert test_change3("somekv_from_v_to_nil", %{"somek" => "somev"}, %{"somek" => nil}) == %{
+             "somek" => nil
+           }
 
     assert test_change3("somekv_from_v_to_nil", %{"somek" => "somev"}, %{"somek" => "somev2"}) ==
              %{
                "somek" => "somev2"
              }
 
-    # assert test_change3("somekv_from_nil_to_v", %{"somek" => nil}, %{"somek" => "v"}) == %{
-    #          "somek" => "v"
-    #        }
+    assert test_change3("somekv_from_nil_to_v", %{"somek" => nil}, %{"somek" => "v"}) == %{
+             "somek" => "v"
+           }
 
-    # assert test_change3("map_in_map", %{"m" => nil}, %{"m" => %{"m" => "v"}}) == %{
-    #          "m" => %{"m" => "v"}
-    #        }
+    assert test_change3("map_in_map", %{"m" => nil}, %{"m" => %{"m" => "v"}}) == %{
+             "m" => %{"m" => "v"}
+           }
 
-    # assert test_change3("map_in_list", [%{"m" => %{}}], [%{"m" => %{"v" => [[[]]]}}]) ==
-    #          [%{"m" => %{"v" => [[[]]]}}]
+    assert test_change3("map_in_list", [%{"m" => %{}}], [%{"m" => %{"v" => [[[]]]}}]) ==
+             [%{"m" => %{"v" => [[[]]]}}]
+
+    assert test_change3("arr in arr", [], [[]]) == [[]]
+    assert test_change3("map in arr", [], [%{}]) == [%{}]
+    assert test_change3("map in arr", [%{}], [%{"a" => "b"}]) == [%{"a" => "b"}]
+    assert test_change3("map in arr", [%{"a" => "c"}], []) == []
+    assert test_change3("map in arr", [%{"a" => "c"}], [nil]) == [nil]
+    assert test_change3("map in arr", [%{"a" => "d"}], [%{"a" => nil}]) == [%{"a" => nil}]
+    assert test_change3("map in arr", [%{"a" => nil}], [%{"a" => "e"}]) == [%{"a" => "e"}]
+    assert test_change3("map in arr", [%{"a" => "f"}], [%{"a" => "g"}]) == [%{"a" => "g"}]
+    assert test_change3("map in arr", [%{"h" => nil}], [%{"h" => []}]) == [%{"h" => []}]
+    assert test_change3("map in arr", [%{"h" => nil}], [%{"h" => [[]]}]) == [%{"h" => [[]]}]
+    assert test_change3("map in arr", [%{"h" => nil}], [%{"h" => [[[]]]}]) == [%{"h" => [[[]]]}]
+    assert test_change3("map in arr", [%{"h" => []}], [%{"h" => nil}]) == [%{"h" => nil}]
+    assert test_change3("map in arr", [%{"h" => [[]]}], [%{"h" => []}]) == [%{"h" => []}]
+    assert test_change3("map in arr", [%{"h" => [[[]]]}], [%{"h" => [[]]}]) == [%{"h" => [[]]}]
+  end
+
+  test "changes/3 wip" do
+    assert test_change3("map in map", %{}, %{"m" => %{}}) == %{"m" => %{}}
+
+    assert test_change3("map in map", %{"m" => %{}}, %{"m" => %{"m" => %{}}}) == %{
+             "m" => %{"m" => %{}}
+           }
+
+    assert test_change3(
+             "map in map",
+             %{
+               "m" => %{"m" => %{}}
+             },
+             %{
+               "m" => %{
+                 "m" => %{"m" => [[%{}]]}
+               }
+             }
+           ) == %{
+             "m" => %{
+               "m" => %{"m" => [[%{}]]}
+             }
+           }
   end
 
   defp test_change3(stream, old, new) do
@@ -99,58 +138,62 @@ defmodule ZLTest do
   end
 
   def change(stream, record, changes) do
-    IO.inspect("")
-
-    deflated_stream_record =
+    {_, deflated} =
       deflate(stream, record)
-      |> IO.inspect(label: :deflated_stream_record)
-
-    changes
-    |> IO.inspect(label: :changes)
-
-    deflated_and_merged =
-      deflated_stream_record
       |> Map.merge(changes)
-      |> IO.inspect(label: :deflated_and_merged)
-
-    {_, deflated_merged} =
-      deflated_and_merged
-      |> Enum.map_reduce(%{}, fn {k, v}, acc ->
-        {{k, v}, Map.put_new(acc, k, map_reduce_merge(v))}
+      |> IO.inspect
+      |> Enum.map(fn {k, v} ->
+        changes_k = !!changes[k]
+        v = get_v_if_changes_in_k(changes_k, v)
+        {k, v}
       end)
+      |> Enum.map_reduce(%{}, fn {k, v}, acc -> {{k, v}, Map.put_new(acc, k, v)} end)
 
-    {^stream, inflated} =
-      deflated_merged
-      |> inflate()
+    {_, inflated} = inflate(deflated)
 
     inflated
   end
 
-  # defp type_of_change(nil, v) when not is_nil(v) do
-  #   :+
-  # end
+  defp get_v_if_changes_in_k(true, [_, v]), do: v
+  defp get_v_if_changes_in_k(false, v), do: v
 
-  # defp type_of_change(r, nil) when not is_nil(r) do
-  #   :-
-  # end
+  defp type_of_change([r, v]) do
+    type_of_change(r, v)
+  end
 
-  # defp type_of_change(r, v) when r != v do
-  #   type_of_r = type_of_arg(r)
-  #   type_of_v = type_of_arg(v)
-  #   type_changed = type_of_r != type_of_v
-  #   {:=, type_of_r, type_of_v}
-  # end
+  defp type_of_change(nil, v) when not is_nil(v) do
+    {:+, :set}
+  end
 
-  # defp type_of_arg(r) do
-  #   (is_list(r) and :list) ||
-  #     (is_map(r) and :map) ||
-  #     (is_boolean(r) and :boolean) ||
-  #     (is_binary(r) and :binary) ||
-  #     (is_integer(r) and :integer) ||
-  #     (is_float(r) and :float) ||
-  #     (is_number(r) and :number) ||
-  #     :unknown
-  # end
+  defp type_of_change([], v) when is_list(v) and length(v) > 0 do
+    {:+, :populated}
+  end
+
+  defp type_of_change(r, nil) when not is_nil(r) do
+    {:-, :nilified}
+  end
+
+  defp type_of_change(r, []) when is_list(r) and length(r) > 0 do
+    {:-, :emptied}
+  end
+
+  defp type_of_change(r, v) when r != v do
+    type_of_r = type_of_arg(r)
+    type_of_v = type_of_arg(v)
+    type_changed = (type_of_r != type_of_v and :type) || :changed
+    {:=, type_changed}
+  end
+
+  defp type_of_arg(r) do
+    (is_list(r) and :list) ||
+      (is_map(r) and :map) ||
+      (is_boolean(r) and :boolean) ||
+      (is_binary(r) and :binary) ||
+      (is_integer(r) and :integer) ||
+      (is_float(r) and :float) ||
+      (is_number(r) and :number) ||
+      :unknown
+  end
 
   defp map_reduce_merge([_, new]) do
     new
