@@ -106,9 +106,6 @@ defmodule ZLTest do
     assert test_change3("map in arr", [%{"h" => []}], [%{"h" => nil}]) == [%{"h" => nil}]
     assert test_change3("map in arr", [%{"h" => [[]]}], [%{"h" => []}]) == [%{"h" => []}]
     assert test_change3("map in arr", [%{"h" => [[[]]]}], [%{"h" => [[]]}]) == [%{"h" => [[]]}]
-  end
-
-  test "changes/3 wip" do
     assert test_change3("map in map", %{}, %{"m" => %{}}) == %{"m" => %{}}
 
     assert test_change3("map in map", %{"m" => %{}}, %{"m" => %{"m" => %{}}}) == %{
@@ -137,11 +134,47 @@ defmodule ZLTest do
     change(stream, old, changes)
   end
 
+  test "post/2" do
+    data = post("stream", "a", [])
+    |> IO.inspect(label: :post)
+    data = post("stream", "a", data)
+    |> IO.inspect(label: :post)
+    data = post("stream", "b", data)
+    |> IO.inspect(label: :post)
+    data = post("stream", "c", data)
+    |> IO.inspect(label: :post)
+
+  end
+
+  def post(stream, data, existing \\ []) do
+    s = get(stream, existing)
+    s = (!!s and List.last(s)) || s
+    {^stream, _, changes} =
+      diff(stream, s, data)
+
+    (changes == %{} and existing) || [changes | existing]
+  end
+
+  def get(stream, existing \\ []) do
+    Enum.filter(existing, fn e ->
+      get(stream, existing, Map.has_key?(e, stream), Map.get(e, stream))
+    end)
+    |> Enum.map(fn e -> get(stream, existing, Map.has_key?(e, stream), Map.get(e, stream)) end)
+    |> List.first()
+  end
+
+  defp get(stream, existing, true, v) do
+    v
+  end
+
+  defp get(stream, existing, false, _) do
+    false
+  end
+
   def change(stream, record, changes) do
     {_, deflated} =
       deflate(stream, record)
       |> Map.merge(changes)
-      |> IO.inspect
       |> Enum.map(fn {k, v} ->
         changes_k = !!changes[k]
         v = get_v_if_changes_in_k(changes_k, v)
