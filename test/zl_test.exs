@@ -134,26 +134,50 @@ defmodule ZLTest do
     change(stream, old, changes)
   end
 
-  test "post/2" do
-    data = []
+  describe "post/2" do
+    test "setting, changing and nilling a string" do
+      # no initial facts...
+      data = []
 
-    # setting ...
-    assert {"stream", "a", data} = post("stream", "a", data)
+      # setting ...
+      assert {"stream", "a", data} = post("stream", "a", data)
 
-    assert data == [%{"stream" => [nil, "a"]}]
+      assert data == [%{"stream" => [nil, "a"]}]
 
-    # no change
-    assert {"stream", "a", data} ==
-             post("stream", "a", data)
+      # no change
+      assert {"stream", "a", data} ==
+               post("stream", "a", data)
 
-    # changing...
-    assert {"stream", "b", data} = post("stream", "b", data)
-    assert data == [%{"stream" => ["a", "b"]}, %{"stream" => [nil, "a"]}]
+      # changing...
+      assert {"stream", "b", data} = post("stream", "b", data)
+      assert data == [%{"stream" => ["a", "b"]}, %{"stream" => [nil, "a"]}]
 
-    # nilling...
-    assert {"stream", nil, data} = post("stream", nil, data)
-    assert data == [%{"stream" => ["b", nil]}, %{"stream" => ["a", "b"]}, %{"stream" => [nil, "a"]}]
+      # nilling...
+      assert {"stream", nil, data} = post("stream", nil, data)
 
+      assert data == [
+               %{"stream" => ["b", nil]},
+               %{"stream" => ["a", "b"]},
+               %{"stream" => [nil, "a"]}
+             ]
+    end
+
+    test "multi string streams" do
+      facts = []
+
+      stream_a = "stream_a"
+      stream_b = "stream_b"
+
+      assert {^stream_a, _, facts} = post(stream_a, "a", facts)
+      assert {^stream_b, _, facts} = post(stream_b, "b", facts)
+
+      assert facts == [%{"stream_b" => [nil, "b"]}, %{"stream_a" => [nil, "a"]}]
+
+      assert {^stream_a, _, facts} = post(stream_a, "aa", facts)
+      assert {^stream_b, _, facts} = post(stream_b, "bb", facts)
+
+      assert facts == [%{"stream_b" => ["b", "bb"]}, %{"stream_a" => ["a", "aa"]}, %{"stream_b" => [nil, "b"]}, %{"stream_a" => [nil, "a"]}]
+    end
   end
 
   def post(stream, data, facts \\ []) do
