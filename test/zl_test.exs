@@ -135,31 +135,36 @@ defmodule ZLTest do
   end
 
   test "post/2" do
-    data = post("stream", "a", [])
-    |> IO.inspect(label: :post)
-    data = post("stream", "a", data)
-    |> IO.inspect(label: :post)
-    data = post("stream", "b", data)
-    |> IO.inspect(label: :post)
-    data = post("stream", "c", data)
-    |> IO.inspect(label: :post)
+    {stream, data} = post("stream", "a", [])
+    {stream, data} = post("stream", "a", data)
+    {stream, data} = post("stream", "b", data)
+    # {stream, data} = post("stream", "c", data)
 
+    # 0..2
+    # |> Enum.each(fn i -> {stream, data} = post("stream2", "x", data) end)
+
+    # {stream, data} =
+    #   post("stream", "d", data)
+    #   |> IO.inspect()
   end
 
   def post(stream, data, existing \\ []) do
     s = get(stream, existing)
     s = (!!s and List.last(s)) || s
-    {^stream, _, changes} =
-      diff(stream, s, data)
 
-    (changes == %{} and existing) || [changes | existing]
+    {^stream, _, changes} = diff(stream, s, data)
+    |> IO.inspect(label: :diff)
+
+    posted = (changes == %{} and existing) || [changes | existing]
+    {stream, posted: posted}
   end
 
-  def get(stream, existing \\ []) do
-    Enum.filter(existing, fn e ->
-      get(stream, existing, Map.has_key?(e, stream), Map.get(e, stream))
+  def get(stream, facts \\ []) do
+    facts
+    |> Enum.map(fn fact ->
+      get(stream, facts, Map.has_key?(fact, stream), Map.get(fact, stream))
     end)
-    |> Enum.map(fn e -> get(stream, existing, Map.has_key?(e, stream), Map.get(e, stream)) end)
+    |> Enum.filter(fn fact -> !!fact end)
     |> List.first()
   end
 
