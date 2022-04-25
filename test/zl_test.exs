@@ -152,8 +152,8 @@ defmodule ZLTest do
 
     # nilling...
     assert {"stream", nil, data} = post("stream", nil, data)
-
     assert data == [%{"stream" => ["b", nil]}, %{"stream" => ["a", "b"]}, %{"stream" => [nil, "a"]}]
+
   end
 
   def post(stream, data, facts \\ []) do
