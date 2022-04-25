@@ -135,44 +135,53 @@ defmodule ZLTest do
   end
 
   test "post/2" do
-    {stream, data} = post("stream", "a", [])
-    {stream, data} = post("stream", "a", data)
-    {stream, data} = post("stream", "b", data)
-    # {stream, data} = post("stream", "c", data)
+    data = []
 
-    # 0..2
-    # |> Enum.each(fn i -> {stream, data} = post("stream2", "x", data) end)
+    # setting ...
+    assert {"stream", "a", data} = post("stream", "a", data)
 
-    # {stream, data} =
-    #   post("stream", "d", data)
-    #   |> IO.inspect()
+    assert data == [%{"stream" => [nil, "a"]}]
+
+    # no change
+    assert {"stream", "a", data} ==
+             post("stream", "a", data)
+
+    # changing...
+    assert {"stream", "b", data} = post("stream", "b", data)
+    assert data == [%{"stream" => ["a", "b"]}, %{"stream" => [nil, "a"]}]
+
+    # nilling...
+    assert {"stream", nil, data} = post("stream", nil, data)
+
+    assert data == [%{"stream" => ["b", nil]}, %{"stream" => ["a", "b"]}, %{"stream" => [nil, "a"]}]
   end
 
-  def post(stream, data, existing \\ []) do
-    s = get(stream, existing)
-    s = (!!s and List.last(s)) || s
+  def post(stream, data, facts \\ []) do
+    latest = post(stream, data, facts, :latest)
 
-    {^stream, _, changes} = diff(stream, s, data)
-    |> IO.inspect(label: :diff)
+    {^stream, ^latest, changes} = diff(stream, latest, data)
 
-    posted = (changes == %{} and existing) || [changes | existing]
-    {stream, posted: posted}
+    posted = (changes == %{} and facts) || [changes | facts]
+    {stream, data, posted}
   end
 
-  def get(stream, facts \\ []) do
-    facts
-    |> Enum.map(fn fact ->
-      get(stream, facts, Map.has_key?(fact, stream), Map.get(fact, stream))
-    end)
-    |> Enum.filter(fn fact -> !!fact end)
-    |> List.first()
+  defp post(stream, _, facts, :latest) when is_list(facts) do
+    latest =
+      facts
+      |> Enum.map(fn fact ->
+        post(stream, facts, Map.has_key?(fact, stream), Map.get(fact, stream), :fact_filter)
+      end)
+      |> Enum.filter(fn fact -> !!fact end)
+      |> List.first()
+
+    (!!latest and List.last(latest)) || latest
   end
 
-  defp get(stream, existing, true, v) do
+  defp post(_, _, true, v, :fact_filter) do
     v
   end
 
-  defp get(stream, existing, false, _) do
+  defp post(_, _, false, _, :fact_filter) do
     false
   end
 
@@ -195,51 +204,43 @@ defmodule ZLTest do
   defp get_v_if_changes_in_k(true, [_, v]), do: v
   defp get_v_if_changes_in_k(false, v), do: v
 
-  defp type_of_change([r, v]) do
-    type_of_change(r, v)
-  end
+  # defp type_of_change([r, v]) do
+  #   type_of_change(r, v)
+  # end
 
-  defp type_of_change(nil, v) when not is_nil(v) do
-    {:+, :set}
-  end
+  # defp type_of_change(nil, v) when not is_nil(v) do
+  #   {:+, :set}
+  # end
 
-  defp type_of_change([], v) when is_list(v) and length(v) > 0 do
-    {:+, :populated}
-  end
+  # defp type_of_change([], v) when is_list(v) and length(v) > 0 do
+  #   {:+, :populated}
+  # end
 
-  defp type_of_change(r, nil) when not is_nil(r) do
-    {:-, :nilified}
-  end
+  # defp type_of_change(r, nil) when not is_nil(r) do
+  #   {:-, :nilified}
+  # end
 
-  defp type_of_change(r, []) when is_list(r) and length(r) > 0 do
-    {:-, :emptied}
-  end
+  # defp type_of_change(r, []) when is_list(r) and length(r) > 0 do
+  #   {:-, :emptied}
+  # end
 
-  defp type_of_change(r, v) when r != v do
-    type_of_r = type_of_arg(r)
-    type_of_v = type_of_arg(v)
-    type_changed = (type_of_r != type_of_v and :type) || :changed
-    {:=, type_changed}
-  end
+  # defp type_of_change(r, v) when r != v do
+  #   type_of_r = type_of_arg(r)
+  #   type_of_v = type_of_arg(v)
+  #   type_changed = (type_of_r != type_of_v and :type) || :changed
+  #   {:=, type_changed}
+  # end
 
-  defp type_of_arg(r) do
-    (is_list(r) and :list) ||
-      (is_map(r) and :map) ||
-      (is_boolean(r) and :boolean) ||
-      (is_binary(r) and :binary) ||
-      (is_integer(r) and :integer) ||
-      (is_float(r) and :float) ||
-      (is_number(r) and :number) ||
-      :unknown
-  end
-
-  defp map_reduce_merge([_, new]) do
-    new
-  end
-
-  defp map_reduce_merge(current) do
-    current
-  end
+  # defp type_of_arg(r) do
+  #   (is_list(r) and :list) ||
+  #     (is_map(r) and :map) ||
+  #     (is_boolean(r) and :boolean) ||
+  #     (is_binary(r) and :binary) ||
+  #     (is_integer(r) and :integer) ||
+  #     (is_float(r) and :float) ||
+  #     (is_number(r) and :number) ||
+  #     :unknown
+  # end
 
   def diff(stream, a, b) do
     deflateda = deflate(stream, a)
