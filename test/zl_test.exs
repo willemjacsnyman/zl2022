@@ -176,8 +176,70 @@ defmodule ZLTest do
       assert {^stream_a, _, facts} = post(stream_a, "aa", facts)
       assert {^stream_b, _, facts} = post(stream_b, "bb", facts)
 
-      assert facts == [%{"stream_b" => ["b", "bb"]}, %{"stream_a" => ["a", "aa"]}, %{"stream_b" => [nil, "b"]}, %{"stream_a" => [nil, "a"]}]
+      assert facts == [
+               %{"stream_b" => ["b", "bb"]},
+               %{"stream_a" => ["a", "aa"]},
+               %{"stream_b" => [nil, "b"]},
+               %{"stream_a" => [nil, "a"]}
+             ]
     end
+
+    test "creating, changing and emptying a list" do
+      # no initial facts...
+      data = []
+
+      # creating...
+      assert {"stream", [], data} = post("stream", [], data)
+      assert [%{"stream" => [nil, []]}] == data
+
+      # changing...
+      assert {"stream", ["a"], data} = post("stream", ["a"], data)
+
+      assert [
+               %{"stream" => [[], ["stream/0"]], "stream/0" => [nil, "a"]},
+               %{"stream" => [nil, []]}
+             ] == data
+    end
+  end
+
+  describe "get/2" do
+    test "returns a string, given facts are about a string" do
+      # setting...
+      facts = [
+        %{"stream" => [nil, "a"]}
+      ]
+
+      assert %{"stream" => "a"} == get("stream", facts)
+
+      # changing...
+      facts = [
+        %{"stream" => ["a", "b"]},
+        %{"stream" => [nil, "a"]}
+      ]
+
+      assert %{"stream" => "b"} == get("stream", facts)
+
+      # disposing...
+      facts = [
+        %{"stream" => ["b", nil]},
+        %{"stream" => ["a", "b"]},
+        %{"stream" => [nil, "a"]}
+      ]
+
+      assert %{"stream" => nil} == get("stream", facts)
+    end
+  end
+
+  def get(stream, facts \\ []) do
+    {_, result} =
+      Enum.reverse(facts)
+      |> Enum.filter(&(!!&1[stream]))
+      |> Enum.map_reduce(%{}, fn fact, acc ->
+        acc = Map.put(acc, stream, change(stream, acc, fact))
+        {fact, acc}
+      end)
+
+    result
   end
 
   def post(stream, data, facts \\ []) do
@@ -215,7 +277,7 @@ defmodule ZLTest do
       |> Map.merge(changes)
       |> Enum.map(fn {k, v} ->
         changes_k = !!changes[k]
-        v = get_v_if_changes_in_k(changes_k, v)
+        v = get_changes_if_changed(changes_k, v)
         {k, v}
       end)
       |> Enum.map_reduce(%{}, fn {k, v}, acc -> {{k, v}, Map.put_new(acc, k, v)} end)
@@ -225,8 +287,8 @@ defmodule ZLTest do
     inflated
   end
 
-  defp get_v_if_changes_in_k(true, [_, v]), do: v
-  defp get_v_if_changes_in_k(false, v), do: v
+  defp get_changes_if_changed(true, [_, v]), do: v
+  defp get_changes_if_changed(false, v), do: v
 
   # defp type_of_change([r, v]) do
   #   type_of_change(r, v)
@@ -255,16 +317,63 @@ defmodule ZLTest do
   #   {:=, type_changed}
   # end
 
-  # defp type_of_arg(r) do
-  #   (is_list(r) and :list) ||
-  #     (is_map(r) and :map) ||
-  #     (is_boolean(r) and :boolean) ||
-  #     (is_binary(r) and :binary) ||
-  #     (is_integer(r) and :integer) ||
-  #     (is_float(r) and :float) ||
-  #     (is_number(r) and :number) ||
-  #     :unknown
-  # end
+  describe "type_of/1" do
+    test "lists" do
+      assert :list == type_of([])
+      assert :list == type_of([1])
+      assert :list == type_of([1, "2"])
+      assert :list == type_of([1, "2", ["3"]])
+    end
+
+    test "maps" do
+      assert :map == type_of(%{})
+      assert :map == type_of(%{"a" => 1})
+      assert :map == type_of(%{"a" => 1, "b" => []})
+      assert :map == type_of(%{"a" => 1, "b" => [2], "c" => %{"d" => nil}})
+    end
+
+    test "booleans" do
+      assert :boolean == type_of(true)
+      assert :boolean == type_of(false)
+    end
+
+    test "binary" do
+      assert :binary == type_of("")
+      assert :binary == type_of("  ")
+      assert :binary == type_of("some text")
+      assert :binary == type_of("false")
+      assert :binary == type_of("[]")
+    end
+
+    test "integer" do
+      assert :integer == type_of(0)
+      assert :integer == type_of(1)
+      assert :integer == type_of(-1)
+
+      assert :integer ==
+               type_of(1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000)
+
+      assert :integer ==
+               type_of(-1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000)
+    end
+
+    test "float" do
+      assert :float == type_of(0.0)
+      assert :float == type_of(0.0000001)
+      assert :float == type_of(1_000_000.00)
+      assert :float == type_of(1_000_000.0000001)
+    end
+  end
+
+  defp type_of(r) do
+    (is_list(r) and :list) ||
+      (is_map(r) and :map) ||
+      (is_boolean(r) and :boolean) ||
+      (is_binary(r) and :binary) ||
+      (is_integer(r) and :integer) ||
+      (is_float(r) and :float) ||
+      :unknown
+  end
 
   def diff(stream, a, b) do
     deflateda = deflate(stream, a)
