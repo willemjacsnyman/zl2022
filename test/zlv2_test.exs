@@ -1,5 +1,5 @@
 defmodule ZLv2Test do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   # doctest ZL?
 
   describe "hash/2" do
@@ -235,13 +235,14 @@ defmodule ZLv2Test do
     end
   end
 
-  defp type_of(r) do
+  def type_of(r) do
     (is_list(r) and :list) ||
       (is_map(r) and :map) ||
       (is_boolean(r) and :boolean) ||
       (is_binary(r) and :binary) ||
       (is_integer(r) and :integer) ||
       (is_float(r) and :float) ||
+      (is_nil(r) and :null) ||
       :unknown
   end
 
@@ -259,7 +260,6 @@ defmodule ZLv2Test do
       datab = nil
       assert %{"stream" => ["A", nil]} == compare(stream, dataa, datab)
     end
-
 
     test "given a nil string that will be initialised" do
       stream = "stream"
@@ -304,7 +304,8 @@ defmodule ZLv2Test do
       dataa = nil
       datab = []
 
-      assert %{"a nil list that has been instantiated" => [nil, []]} == compare(stream, dataa, datab)
+      assert %{"a nil list that has been instantiated" => [nil, []]} ==
+               compare(stream, dataa, datab)
     end
 
     test "given a list where a change is on an indexed item" do
@@ -363,6 +364,95 @@ defmodule ZLv2Test do
       assert %{"list that will be emptied/0" => ["An item", nil]} ==
                compare(stream, dataa, list_with_disposed_indexed_item)
     end
+
+    test "given a map has been initialised" do
+      stream = "map that will be initialised"
+      dataa = nil
+      an_initialised_map = %{}
+
+      assert %{"map that will be initialised" => [nil, %{}]} ==
+               compare(stream, dataa, an_initialised_map)
+    end
+
+    test "given a map has been initialised and populated" do
+      stream = "map that will be populated"
+      dataa = nil
+      an_initialised_map = %{"a" => "b"}
+
+      assert %{
+               "map that will be populated" => [nil, %{"a" => "map that will be populated/a"}],
+               "map that will be populated/a" => [nil, "b"]
+             } == compare(stream, dataa, an_initialised_map)
+    end
+
+    test "given a map where a value has been changed" do
+      stream = "a map with a changed value"
+      dataa = %{"a" => "b"}
+      datab = %{"a" => "c"}
+      assert %{"a map with a changed value/a" => ["b", "c"]} == compare(stream, dataa, datab)
+    end
+
+    test "given a map where a value has been added" do
+      stream = "a map with an added value"
+      dataa = %{"a" => "b"}
+      datab = %{"a" => "b", "c" => "d"}
+
+      assert %{
+               "a map with an added value" => [
+                 %{"a" => "a map with an added value/a"},
+                 %{"a" => "a map with an added value/a", "c" => "a map with an added value/c"}
+               ],
+               "a map with an added value/c" => [nil, "d"]
+             } == compare(stream, dataa, datab)
+    end
+
+    test "given a map where a value has been initialised as a list" do
+      stream = "a map with an initialised list"
+      dataa = %{}
+      datab = %{"a" => []}
+
+      assert %{
+               "a map with an initialised list" => [
+                 %{},
+                 %{"a" => "a map with an initialised list/a"}
+               ],
+               "a map with an initialised list/a" => [nil, []]
+             } == compare(stream, dataa, datab)
+    end
+
+    test "given a map where a value has been initialised as a populated list" do
+      stream = "a map with a populated list"
+      dataa = %{}
+      datab = %{"a" => ["b", "c"]}
+
+      assert %{
+               "a map with a populated list" => [%{}, %{"a" => "a map with a populated list/a"}],
+               "a map with a populated list/a" => [
+                 nil,
+                 ["a map with a populated list/a/0", "a map with a populated list/a/1"]
+               ],
+               "a map with a populated list/a/0" => [nil, "b"],
+               "a map with a populated list/a/1" => [nil, "c"]
+             } == compare(stream, dataa, datab)
+    end
+
+    test "given a map where a populated list value has been initialised has been emptied" do
+      stream = "a map"
+      dataa = %{"a" => ["b"]}
+      datab = %{"a" => []}
+
+      assert %{"a map/a" => [["a map/a/0"], []], "a map/a/0" => ["b", nil]} ==
+               compare(stream, dataa, datab)
+
+      diff = compare(stream, dataa, datab)
+
+      hash(stream, dataa)
+      |> Map.merge(diff)
+      |> Enum.map_reduce(%{}, fn
+        {k, [_old, new]}, acc -> {{k, new}, Map.put_new(acc, k, new)}
+        {k, v}, acc -> {{k, v}, Map.put_new(acc, k, v)}
+      end)
+    end
   end
 
   def compare(stream, a, b) do
@@ -382,5 +472,219 @@ defmodule ZLv2Test do
       |> Enum.map_reduce(%{}, fn {k, v}, acc -> {{k, v}, Map.put_new(acc, k, v)} end)
 
     Map.merge(diffb, diffa)
+  end
+
+  describe "rebuild/2" do
+    test "given a stream with nil, returns the nil" do
+      stream = "a stream for nil"
+      data = nil
+      hasheddata = hash(stream, data)
+      assert nil == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream with a hashed binary, returns the original binary" do
+      stream = "a stream for a binary"
+      data = "a binary"
+      hasheddata = hash(stream, data)
+
+      assert "a binary" == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream with a hashed list, returns the original list" do
+      stream = "a stream for a list"
+      data = []
+      hasheddata = hash(stream, data)
+
+      assert [] == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream with a hashed populated list, returns the original list" do
+      stream = "a stream for a populated list"
+      data = ["a", "b"]
+      hasheddata = hash(stream, data)
+      assert ["a", "b"] == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream with a hashed list with nested lists, returns the original list" do
+      stream = "a stream for a list with nested lists"
+      data = [["a", "b"], ["c"], []]
+      hasheddata = hash(stream, data)
+      assert [["a", "b"], ["c"], []] == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream for an initialised map, returns the original map" do
+      stream = "a stream for an initialised map"
+      data = %{}
+      hasheddata = hash(stream, data)
+      assert %{} == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream for a populated map, returns the original map" do
+      stream = "a stream for a populated map"
+      data = %{"a" => "b"}
+      hasheddata = hash(stream, data)
+      assert %{"a" => "b"} == rebuild(stream, hasheddata)
+    end
+
+    test "given a stream for a populated map with populated list values, returns the original map" do
+      stream = "a stream for a populated map with populated list value"
+      data = %{"a" => ["b", "c"], "d" => ["e"], "f" => []}
+      hasheddata = hash(stream, data)
+      assert %{"a" => ["b", "c"], "d" => ["e"], "f" => []} == rebuild(stream, hasheddata)
+    end
+  end
+
+  def rebuild(stream, hash) when is_map(hash) do
+    rebuild(stream, hash, hash["#"])
+  end
+
+  defp rebuild(stream, hash, streamh) when stream == streamh do
+    data = hash[stream]
+    rebuild(stream, hash, type_of(data))
+  end
+
+  defp rebuild(_, _, :null) do
+    nil
+  end
+
+  defp rebuild(stream, hash, :binary) do
+    hash[stream]
+  end
+
+  defp rebuild(stream, hash, :list) do
+    hash[stream]
+    |> Enum.map(fn item -> rebuild(item, hash, type_of(hash[item])) end)
+  end
+
+  defp rebuild(stream, hash, :map) do
+    {_, data} =
+      hash[stream]
+      |> Enum.map(fn {k, v} -> {k, rebuild(v, hash, type_of(hash[v])) || v} end)
+      |> Enum.map_reduce(%{}, fn {k, v}, acc -> {{k, v}, Map.put_new(acc, k, v)} end)
+
+    data
+  end
+
+  describe "apply_diff/2" do
+    test "a binary stream that has been initialised" do
+      stream = "stream"
+      datab = "a"
+
+      diff = compare(stream, nil, datab)
+
+      assert %{"stream" => "a"} == apply_diff(stream, diff)
+    end
+
+    test "a binary stream that has been disposed" do
+      stream = "stream"
+      data = "a"
+
+      diff = compare(stream, data, nil)
+
+      assert %{"stream" => nil} == apply_diff(stream, diff)
+    end
+
+    test "a binary stream that has been changed" do
+      stream = "stream"
+      data = "a"
+      datab = "b"
+
+      diff = compare(stream, data, datab)
+
+      assert %{"stream" => "b"} == apply_diff(stream, diff)
+    end
+
+    test "{:error, :nodiff} is returned when there are no changes" do
+      stream = "stream"
+      data = "a"
+      datab = "a"
+
+      diff = compare(stream, data, datab)
+
+      assert {:error, :nodiff} == apply_diff(stream, diff)
+    end
+
+    test "a list that has been initialised" do
+      stream = "list"
+      data = nil
+      datab = []
+
+      diff = compare(stream, data, datab)
+
+      assert %{"list" => []} == apply_diff(stream, diff)
+    end
+
+    test "an initialised list that has been disposed" do
+      stream = "list"
+      data = []
+      datab = nil
+
+      diff = compare(stream, data, datab)
+
+      assert %{"list" => nil} == apply_diff(stream, diff)
+    end
+
+    test "a populated list that has been disposed" do
+      stream = "list"
+      data = ["a"]
+      datab = nil
+
+      diff = compare(stream, data, datab)
+
+      assert %{"list" => nil} == apply_diff(stream, diff)
+    end
+
+    test "a populated list that has been emptied" do
+      stream = "list"
+      data = ["a"]
+      datab = []
+
+      diff = compare(stream, data, datab)
+
+      assert %{"list" => []} == apply_diff(stream, diff)
+    end
+
+    test "a list with that has been initialised and populated" do
+      stream = "list"
+      data = nil
+      datab = ["a", "b"]
+
+      diff = compare(stream, data, datab)
+
+      assert %{"list" => ["a", "b"]} == apply_diff(stream, diff)
+    end
+  end
+
+  def apply_diff(_, diff) when map_size(diff) == 0 do
+    {:error, :nodiff}
+  end
+
+  def apply_diff(stream, diff) do
+    apply_diff(stream, diff, diff[stream])
+  end
+
+  defp apply_diff(stream, diff, [_, v]) do
+    apply_diff(stream, diff, type_of(v), v)
+  end
+
+  defp apply_diff(stream, _, :null, nil) do
+    %{stream => nil}
+  end
+
+  defp apply_diff(stream, _, :binary, binary) do
+    %{stream => binary}
+  end
+
+  defp apply_diff(stream, diff, :list, list) do
+    apply_diff(stream, diff, :list, list, [])
+  end
+
+  defp apply_diff(stream, diff, :list, [item | list], completed) do
+    item = apply_diff(item, diff)[item]
+    apply_diff(stream, diff, :list, list, [item | completed])
+  end
+
+  defp apply_diff(stream, _, :list, [], completed) do
+    %{stream => Enum.reverse(completed)}
   end
 end
